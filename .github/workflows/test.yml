@@ -1,0 +1,34 @@
+name: Test Forge
+
+on:
+    pull_request:
+    push:
+      branches:
+        - master
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Python 3
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: pip install .[dev]
+      - name: Lint pycodestyle the code
+        run:  tox -e lint
+      - name: Run tests with pytest
+        run: 
+          pytest --cov=./ --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./
+          env_vars: OS,PYTHON
+          fail_ci_if_error: true
+          flags: unittests
+          name: codecov-umbrella
+          version: "v0.1.15"
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}

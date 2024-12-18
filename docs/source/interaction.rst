@@ -65,7 +65,7 @@ A minimal YAML formatted configuration for each of the Demo and BlueBrainNexus s
     """
    forge = KnowledgeGraphForge(configuration=config)
 
-See the `configuration documentation page section <https://nexus-forge.readthedocs.io/en/latest/configuration.html>`__ for a full list of forge configuration and see the `examples/notebooks/use-cases/ <https://github.com/BlueBrain/nexus-forge/tree/master/examples/notebooks/use-cases>`__ folder
+See the `configuration documentation page section <https://nexus-forge.readthedocs.io/en/v0.8.1/configuration.html>`__ for a full list of forge configuration and see the `examples/notebooks/use-cases/ <https://github.com/BlueBrain/nexus-forge/tree/master/examples/notebooks/use-cases>`__ folder
 for more real world YAML examples.
 
 |Binder_Init| for more details about how to create forge configurations files.
@@ -219,22 +219,23 @@ SPARQL query if supported by the store (4) or by using an ElasticSearch query if
 
 .. code-block:: python
 
-   forge.retrieve(id: str, version: Optional[Union[int, str]] = None, cross_bucket: bool = False) -> Resource
+   forge.retrieve(id: str, version: Optional[Union[int, str]] = None, cross_bucket: bool = False, **params) -> Resource
    forge.paths(type: str) -> PathsWrapper # introspect a schema by type and return all defined property paths
    forge.search(*filters, **params) -> List[Resource] # a cross_bucket param can be used to enable cross bucket search (True) or not (False)
-   forge.sparql(query: str, debug: bool, limit: int, offset: int = None) -> List[Resource]
-   forge.elastic(query: str, debug: bool, limit: int, offset: int = None) -> List[Resource] # for elasticsearch query
+   forge.sparql(query: str, debug: bool=False, limit: Optional[int] = None, offset: Optional[int] = None, **params) -> List[Resource]
+   forge.elastic(query: str, debug: bool=False, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Resource] # for elasticsearch query
    forge.download(data: Union[Resource, List[Resource]], follow: str, path: str, overwrite: bool = False, cross_bucket: bool = False) -> None
 
-Currently `forge.search(*filters, **params)` will rewrite the filters as a SPARQL query.
+Currently `forge.search(*filters, **params)` will by default rewrite the filters as a SPARQL query and run it against a configured SPARQL endpoint unless `sparql_endpoint='elastic'` is set and an ElasticSearch search endpoint configured.
 When the `cross_bucket=True` param is set, then it can be complemented with a 'bucket=<str>' param to filter the bucket to search in.
 
-Next are examples of search calls:
+Next are examples of search calls with different query syntax:
 
 .. code-block:: python
 
     from kgforge.core import KnowledgeGraphForge
     from kgforge.specializations.resources import Dataset
+    # see https://github.com/BlueBrain/nexus-forge/blob/master/examples/notebooks/use-cases/prod-forge-nexus.yml for a full forge config example.
     forge = KnowledgeGraphForge(configuration="./config.yml", **kwargs)
 
     # Retrieve by id at a given version
@@ -246,7 +247,10 @@ Next are examples of search calls:
     distinct_results_filters = forge.search(filters, limit=10, offset=0, distinct=True)
     # Filter by type using a paths
     paths = forge.paths("Dataset")
-    result_paths = forge.search(paths.type=="Dataset", limit=10, offset=0, deprecated=False)
+    result_paths = forge.search(paths.type=="Dataset", limit=10, offset=0, deprecated=False) # all python comparison operators are supported
+    # Filter by type using the built-in forge Filter class and hit a configured Elasticsearch search endpoint
+    filters = Filter(operator="__eq__", path=["type"], value="Dataset") # supported operators can be obtained by running [f"{op.value} ({op.name})" for op in FilterOperator]
+    result_paths = forge.search(filters, search_endpoint="elastic")
 
 Versioning
 ----------
@@ -286,7 +290,7 @@ different conversion functions are available.
 .. code-block:: python
 
    forge.as_json(data: Union[Resource, List[Resource]], expanded: bool = False, store_metadata: bool = False) -> Union[Dict, List[Dict]]
-   forge.as_jsonld(data: Union[Resource, List[Resource]], compacted: bool = True, store_metadata: bool = False) -> Union[Dict, List[Dict]]
+   forge.as_jsonld(data: Union[Resource, List[Resource]], compacted: bool = True, store_metadata: bool = False, **params) -> Union[Dict, List[Dict]]
    forge.as_graph(data: Union[Resource, List[Resource]], store_metadata: bool = False) -> Graph
    forge.as_dataframe(data: Union[Resource, List[Resource]], na: Union[Any, List[Any]] = [None], nesting: str = ".", expanded: bool = False, store_metadata: bool = False) -> DataFrame
    forge.from_json(data: Union[Dict, List[Dict]], na: Union[Any, List[Any]] = None) -> Union[Resource, List[Resource]]
@@ -317,11 +321,24 @@ Formatting
 
 |Binder_Formatting| to explore more about forge formatting capabilities.
 
-A preconfigured set of string formats can be provided to ensure the consistency of data.
+.. code-block:: python
+   
+   forge.format(what: str = None, *args, formatter: Union[Formatter, str] = Formatter.STR, uri: str = None, **kwargs) -> str
+
+Two type of formatters are supported:
+
+* Formatter.STR: Default formatter. A preconfigured set of string formatters implemented as `str.format(*args, **kwargs)`. See the Formatter section of the `configuration documentation page section <https://nexus-forge.readthedocs.io/en/v0.8.1/configuration.html>`__ .
 
 .. code-block:: python
+   
+   forge.format(what="formatter_configured_name", "str1", "str2") -> str
 
-   forge.format(what: str, *args) -> str
+* Formatter.URI_REWRITER: URI rewriter delegated to the configured Store. For example, the BlueBrainNexus store can fully expand a provided URI using its json-ld context.
+
+.. code-block:: python
+   
+   forge.format(uri="http://uri", formatter = Formatter.URI_REWRITER, **kwargs) -> str
+
 
 Next is an example of formatting a resource identifier with a namespace. This make all resources identifiers
 fall under the same namespace.
@@ -422,18 +439,51 @@ Full resolver config options and real world examples
                         - identifier: terms
                           bucket: tfidfvectorizer_model_schemaorg_linking
                       result_resource_mapping: ../../configurations/entitylinking-resolver/entitylinking-mapper.hjson
+                  schemaorg_CreativeWork:
+                    - resolver: OntologyResolver
+                      origin: directory
+                      source: "../../data/"
+                      targets:
+                        - identifier: CreativeWork
+                          bucket: schemaorg_ontology_file_path
+                          filters:
+                            - path: subClassOf*.id
+                              value: CreativeWork
+                      result_resource_mapping: ../../configurations/nexus-resolver/term-to-resource-mapping.hjson
 
             """
    forge = KnowledgeGraphForge(configuration= config)
    forge.resolve(text="person", scope="schemaorg", target="terms", strategy=ResolvingStrategy.BEST_MATCH)
+   forge.resolve(text="Chapter", scope="schemaorg_CreativeWork", target="CreativeWork", strategy=ResolvingStrategy.EXACT_MATCH)
 
 A `scope` is a convenient way to name (any name can be provided) a given `Resolver` along with a set of sources of data
 (the `targets`) to resolve against.
 
+Here is the complete configuration of a Resolver:
+
+.. code-block:: python
+
+   Resolvers:
+     <scope>:
+       - resolver: <a class name of a Resolver>
+         origin: <'directory', 'web_service', or 'store'>
+         source: <a directory path, a web service endpoint, or the class name of a Store>
+         targets:
+           - identifier: <a name, or an IRI>
+             bucket: <a file name, an URL path, or a Store bucket>
+             filters:
+               - path: <a resource property path>
+               - value: <a resource property value to filter with>
+         resolve_with_properties: <a list of str currently only supported by DemoResolver>
+         result_resource_mapping: <an Hjson string, a file path, or an URL>
+         endpoint: <when 'origin' is 'store', a Store endpoint, default to Store:endpoint>
+         token: <when 'origin' is 'store', a Store token, default to the token provided in the configured Store>
+
 Nexus Forge comes with the support of 5 types Resolvers:
 
-* **OntologyResolver**: based on type, label and notation (ie. acronym) filtering using a SPARQL query to generate candidates.
-  An example of configuration is available at `examples/notebooks/use-cases/prod-forge-nexus.yml`.
+* **OntologyResolver**: based on type (rdf:type), label (rdfs:label), prefLabel (skos:prefLabel), altLabel (skos:altLabel) and notation (skos:notation) properties to filter with using a SPARQL query to generate candidates. 
+  Extra property path based filters can be provided as part of the resolver configuration to further narrow the results.
+  An example of ontology resolving configuration is available at `examples/notebooks/use-cases/prod-forge-nexus.yml <https://github.com/BlueBrain/nexus-forge/blob/master/examples/notebooks/use-cases/prod-forge-nexus.yml>`__ .
 
 * **EntityLinkerSkLearn**: based on a pretrained model and using `scikit-learn <https://scikit-learn.org/stable/>`__.
   to generate and rank candidates. To customise the configuration of this resolver
@@ -458,8 +508,9 @@ Nexus Forge comes with the support of 5 types Resolvers:
   to generate and rank candidates but require a text embedding or encoding service to compute embeddings of items.
   An example of configuration is available at `examples/notebooks/use-cases/EntityLinkerElastic-forge-demo-config.yml`. .
 
-* **AgentResolver**: based on type, full, given or family names filtering using a SPARQL query to generate candidates.
-  An example of configuration is available at `examples/notebooks/use-cases/prod-forge-nexus.yml`.
+* **AgentResolver**: based on type (rdf:type), name (schema:name), givenName (schema:givenName) or familyName (schema:familyName) properties to filter with using a SPARQL query to generate candidates.
+  Extra property path based filters can be provided as part of the resolver configuration to further narrow the results.
+  An example of configuration is available at `examples/notebooks/use-cases/prod-forge-nexus.yml <https://github.com/BlueBrain/nexus-forge/blob/master/examples/notebooks/use-cases/prod-forge-nexus.yml>`__ .
 
 * **DemoResolver**: an example resolver based on filtering by configurable properties and looking up candidates from a json file.
   An example of configuration is available at `examples/notebooks/use-cases/EntityLinkerSkLearn-forge-demo-config.yml`.

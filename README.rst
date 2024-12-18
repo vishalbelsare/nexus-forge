@@ -1,7 +1,7 @@
 Blue Brain Nexus Forge
 ======================
 
-|Travis_badge| |Version Status| |Binder|
+|Github_build_badge| |codecov| |Version Status| |Binder|
 
 .. image:: https://raw.githubusercontent.com/BlueBrain/nexus-forge/master/docs/source/assets/bbnforge
 
@@ -69,21 +69,23 @@ Development version
 Funding and Acknowledgements
 ----------------------------
 
-This project has received funding from the EPFL Blue Brain Project (funded by
-the Swiss government’s ETH Board of the Swiss Federal Institutes of Technology)
-and from the European Union’s Horizon 2020 Framework Programme for Research and
-Innovation under the Specific Grant Agreement No. 785907 (Human Brain Project SGA2).
+The development of this software was supported by funding to the Blue Brain Project, a research center of the École polytechnique fédérale de Lausanne (EPFL), from the Swiss government's ETH Board of the Swiss Federal Institutes of Technology, and from the European Union’s Horizon 2020 Framework Programme for Research and Innovation under the Specific Grant Agreement No. 785907 (Human Brain Project SGA2).
 
 
-COPYRIGHT © 2019–2021 Blue Brain Project/EPFL
+COPYRIGHT © 2019–2024 Blue Brain Project/EPFL
 
 .. |Binder| image:: https://mybinder.org/badge_logo.svg
     :alt: Binder
     :target: https://mybinder.org/v2/gh/BlueBrain/nexus-forge/master?filepath=examples%2Fnotebooks%2Fgetting-started
     
-.. |Travis_badge| image:: https://travis-ci.com/BlueBrain/nexus-forge.svg?branch=master
-    :target: https://travis-ci.com/BlueBrain/nexus-forge 
+.. |Github_build_badge| image:: https://github.com/BlueBrain/nexus-forge/actions/workflows/test.yml/badge.svg
+    :alt: Build
+    :target: https://github.com/BlueBrain/nexus-forge/actions/workflows/test.yml 
 
 .. |Version Status| image:: https://img.shields.io/pypi/v/nexusforge.svg
    :target: https://pypi.python.org/pypi/nexusforge
+
+.. |codecov| image:: https://codecov.io/gh/BlueBrain/nexus-forge/branch/master/graph/badge.svg?token=YOHG1INCBQ
+   :alt: Coverage
+   :target: https://codecov.io/gh/BlueBrain/nexus-forge
 

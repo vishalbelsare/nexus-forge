@@ -14,9 +14,9 @@
 
 # Test suite for initializing a forge.
 
-import pytest
+import os
 
-from kgforge.core import KnowledgeGraphForge
+from kgforge.core.forge import KnowledgeGraphForge
 
 SCOPE = "terms"
 MODEL = "DemoModel"
@@ -28,6 +28,9 @@ class TestForgeInitialization:
 
     def test_initialization(self, config):
         forge = KnowledgeGraphForge(config)
+        assert forge._config['config'] == config
+        assert forge._config['kwargs'] == {}
+        assert os.environ['PYSHACL_USE_FULL_MIXIN'] == "True"
         assert type(forge._model).__name__ == MODEL
         assert type(forge._store).__name__ == STORE
         assert type(forge._resolvers[SCOPE][RESOLVER]).__name__ == RESOLVER
@@ -49,7 +52,7 @@ class TestResolver:
         assert resolvers_dict is None
 
     def test_resolver_returns_correct_dictionary(self, config):
-        dict_result = {'terms': {'sex': {'bucket': 'sex.json'}}}
+        dict_result = {'terms': {'sex': {'bucket': 'sex.json', 'filters':{'label': 'female', 'type': 'class'}}}}
         forge = KnowledgeGraphForge(config)
         resolvers_dict = forge.resolvers(output="dict")
         assert resolvers_dict == dict_result

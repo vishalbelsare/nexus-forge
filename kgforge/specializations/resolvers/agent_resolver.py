@@ -14,19 +14,17 @@
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable, Union
 
-from kgforge.core.archetypes import Resolver
+from kgforge.core.archetypes.resolver import Resolver
+from kgforge.core.archetypes.resolver import _build_resolving_query
 from kgforge.core.commons.execution import not_supported
+from kgforge.core.commons.sparql_query_builder import SPARQLQueryBuilder
 from kgforge.core.commons.strategies import ResolvingStrategy
-from kgforge.specializations.mappers import DictionaryMapper
-from kgforge.specializations.mappings import DictionaryMapping
+from kgforge.specializations.mappers.dictionaries import DictionaryMapper
+from kgforge.specializations.mappings.dictionaries import DictionaryMapping
 from kgforge.specializations.resolvers.store_service import StoreService
 
 
 class AgentResolver(Resolver):
-
-    def __init__(self, source: str, targets: List[Dict[str, str]], result_resource_mapping: str,
-                 **source_config) -> None:
-        super().__init__(source,  targets, result_resource_mapping, **source_config)
 
     @property
     def mapping(self) -> Callable:
@@ -37,58 +35,70 @@ class AgentResolver(Resolver):
         return DictionaryMapper
 
     def _resolve(self, text: Union[str, List[str]], target: Optional[str], type: Optional[str],
-                 strategy: ResolvingStrategy, resolving_context: Any, limit: Optional[str], threshold: Optional[float]) -> Optional[List[Dict]]:
+                 strategy: ResolvingStrategy, resolving_context: Any, limit: Optional[int], threshold: Optional[float]) -> Optional[List[Dict]]:
 
         if isinstance(text, list):
-            not_supported(("text", list))
+            raise not_supported(("text", list))
 
-        first_filters = f"?id <{self.service.deprecated_property}> \"false\"^^xsd:boolean"
-        if type:
-            first_filters = f"{first_filters} ; a {type}"
+        if target and target not in self.service.sources:
+            raise ValueError(f"Unknown target value: {target}. Supported targets for the selected resolvers are: {self.service.sources.keys()}")
 
-        if strategy == strategy.EXACT_MATCH:
-            name_filter = f" FILTER (?name = \"{text}\")"
-            given_name_filter = f" FILTER (?givenName = \"{text}\")"
-            family_name_filter = f" FILTER (?familyName = \"{text}\")"
-            limit = 1
-        else:
-            name_filter = f" FILTER regex(?name, \"{text}\", \"i\")"
-            given_name_filter = f" FILTER regex(?givenName, \"{text}\", \"i\")"
-            family_name_filter = f" FILTER regex(?familyName, \"{text}\", \"i\")"
-            if strategy == strategy.BEST_MATCH:
-                limit = 1
-
-        query = """
+        properties_to_filter_with = ['name', 'givenName', 'familyName', 'alternateName']
+        query_template = """
             CONSTRUCT {{
-              ?id a ?type ;
+                ?id a ?type ;
                 name ?name ;
                 givenName ?givenName ;
-                familyName ?familyName
+                familyName ?familyName ;
+                alternateName ?alternateName .
             }} WHERE {{
-              ?id a ?type . 
-              OPTIONAL {{
-                ?id name ?name .
-                ?id givenName ?givenName . 
-                ?id familyName ?familyName .
-              }}
-              {{
-                SELECT * WHERE {{
-                  {{ {0} ; name ?name {1} }} UNION
-                  {{ {0} ; familyName ?familyName; givenName ?givenName {2} }} UNION
-                  {{ {0} ; familyName ?familyName; givenName ?givenName {3} }}
-                }} LIMIT {4}
+              GRAPH ?g {{
+                ?id a ?type .
+                OPTIONAL {{
+                  ?id name ?name .
+                }}
+                OPTIONAL {{
+                  ?id givenName ?givenName .
+                }}
+                OPTIONAL {{
+                  ?id familyName ?familyName .
+                }}
+                OPTIONAL {{
+                  ?id alternateName ?alternateName .
+                }}
+                {{
+                  SELECT * WHERE {{
+                    {{ {0} ; name ?name {1} }} UNION
+                    {{ {0} ; familyName ?familyName; givenName ?givenName {2} }} UNION
+                    {{ {0} ; familyName ?familyName; givenName ?givenName {3} }} UNION
+                    {{ {0} ; alternateName ?alternateName {4} }}
+                  }} LIMIT {5}
+                }}
               }}
             }}
-            """.format(first_filters, name_filter, given_name_filter, family_name_filter, limit)
+            """
+        filters = self.service.filters[target] if target in self.service.filters else None
+        context = self.service.get_context(resolving_context, target, filters)
+        query, strategy_dependant_limit = _build_resolving_query(
+            text, query_template, self.service.deprecated_property, self.service.filters[target],
+            strategy, type, properties_to_filter_with, context, SPARQLQueryBuilder, limit
+        )
+        expected_fields = properties_to_filter_with + ["type"]
+        return self.service.perform_query(query, target, expected_fields, strategy_dependant_limit)
 
-        expected_fields = ["type", "name", "familyName", "givenName"]
-        return self.service.perform_query(query, target, expected_fields, None)
+    def _is_target_valid(self, target) -> Optional[bool]:
+        return self.service.validate_target(target)
 
     @staticmethod
-    def _service_from_directory(dirpath: Path, targets: Dict[str, str], **source_config) -> Any:
-        not_supported()
-
-    @staticmethod
-    def _service_from_store(store: Callable, targets: Dict[str, str], **store_config) -> StoreService:
+    def _service_from_store(store: Callable, targets: Dict[str, Dict[str, Dict[str, str]]], **store_config) -> StoreService:
         return StoreService(store, targets, **store_config)
 
+    @staticmethod
+    def _service_from_directory(dirpath: Path, targets: Dict[str, Dict[str, Dict[str, str]]],
+                                **source_config) -> Any:
+        raise not_supported()
+
+    @staticmethod
+    def _service_from_web_service(endpoint: str,
+                                  targets: Dict[str, Dict[str, Dict[str, str]]]) -> Any:
+        raise not_supported()
